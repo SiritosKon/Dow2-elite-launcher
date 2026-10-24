@@ -40,6 +40,9 @@ const T = {
     "open": "Open",
     "language": "Language",
     "cache": "Keep previous versions",
+    "usageTitle": "Anonymous usage count",
+    "usage": "Count me as a launcher user",
+    "usageNote": "Once a day the launcher sends a hash that changes every day, plus its version, OS and the Elite version. No names, Steam or hardware data; days can't be linked to each other.",
     "cacheNote": "switching back to them is instant",
     "mirror": "Extra mirror (optional)",
     "save": "Save",
@@ -113,6 +116,9 @@ const T = {
     "open": "Открыть",
     "language": "Язык",
     "cache": "Хранить прошлые версии",
+    "usageTitle": "Анонимная статистика",
+    "usage": "Учитывать меня в числе пользователей лаунчера",
+    "usageNote": "Раз в сутки лаунчер отправляет хеш, который каждый день новый, плюс свою версию, ОС и версию Elite. Никаких ников, Steam или данных о компьютере; связать дни между собой нельзя.",
     "cacheNote": "переключение на них — мгновенно",
     "mirror": "Дополнительное зеркало (необязательно)",
     "save": "Сохранить",
@@ -186,6 +192,9 @@ const T = {
     "open": "Abrir",
     "language": "Idioma",
     "cache": "Guardar versiones anteriores",
+    "usageTitle": "Estadística anónima",
+    "usage": "Contarme como usuario del launcher",
+    "usageNote": "Una vez al día el launcher envía un hash que cambia cada día, más su versión, el sistema y la versión de Elite. Sin nombres, sin Steam ni datos del equipo; los días no se pueden relacionar entre sí.",
     "cacheNote": "volver a ellas es instantáneo",
     "mirror": "Espejo adicional (opcional)",
     "save": "Guardar",
@@ -259,6 +268,9 @@ const T = {
     "open": "Ouvrir",
     "language": "Langue",
     "cache": "Garder les versions précédentes",
+    "usageTitle": "Statistiques anonymes",
+    "usage": "Me compter parmi les utilisateurs du launcher",
+    "usageNote": "Une fois par jour, le launcher envoie un hash qui change chaque jour, avec sa version, le système et la version d'Elite. Aucun nom, rien de Steam ni du PC ; les jours ne peuvent pas être reliés entre eux.",
     "cacheNote": "y revenir est instantané",
     "mirror": "Miroir supplémentaire (facultatif)",
     "save": "Enregistrer",
@@ -332,6 +344,9 @@ const T = {
     "open": "Öffnen",
     "language": "Sprache",
     "cache": "Frühere Versionen behalten",
+    "usageTitle": "Anonyme Statistik",
+    "usage": "Mich als Launcher-Nutzer mitzählen",
+    "usageNote": "Einmal am Tag sendet der Launcher einen Hash, der sich täglich ändert, dazu seine Version, das System und die Elite-Version. Keine Namen, keine Steam- oder Hardwaredaten; Tage lassen sich nicht miteinander verknüpfen.",
     "cacheNote": "zurückwechseln geht sofort",
     "mirror": "Zusätzlicher Mirror (optional)",
     "save": "Speichern",
@@ -523,6 +538,7 @@ function render() {
   $('gameDir').textContent = S.game_dir || '—';
   $('lang').value = S.lang || '';
   $('cache').value = String(S.cache_mb);
+  $('usage').checked = S.usage_stats !== false;
   $('mirror').value = S.extra_mirror || '';
   $('mirrorInfo').textContent = t('mirrors', { n: S.mirror_count });
   $('repair').disabled = S.busy || !S.installed_version;
@@ -594,6 +610,7 @@ $('cancel').onclick = () => invoke('cancel_update');
 $('browse').onclick = pickDir;
 $('openDir').onclick = () => invoke('open_game_dir').catch(e => toast(e, true));
 $('lang').onchange = e => invoke('set_setting', { key: 'lang', value: e.target.value }).then(reload);
+$('usage').onchange = e => invoke('set_setting', { key: 'usage_stats', value: e.target.checked }).then(reload);
 $('cache').onchange = e => invoke('set_setting', { key: 'cache_mb', value: +e.target.value }).then(reload);
 $('saveMirror').onclick = () => invoke('set_setting', { key: 'extra_mirror', value: $('mirror').value.trim() }).then(refresh);
 $('repair').onclick = () => startUpdate(true);

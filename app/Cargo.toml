@@ -14,6 +14,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 elite-core = { path = "../crates/elite-core" }
+sha2 = "0.10"
+getrandom = "0.2"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"

@@ -25,4 +25,10 @@ This program does not collect or send personal data on its own. It connects only
   installed add-ons are uploaded so a developer can investigate a crash. The user can type a name to attach to the
   upload; otherwise it is anonymous.
 
-No analytics, no tracking, no accounts.
+- the same address once a day for an anonymous usage count, unless the user unticks it in Settings. The request
+  carries a hash that changes every day (SHA-256 of a random local secret and the day number, cut to 128 bits), the
+  launcher version, the operating system and the installed Elite version. The secret never leaves the computer, and
+  because the hash changes daily the server cannot link two days to the same install. No names, Steam, hardware or
+  account data. The server keeps only these fields per day and does not log IP addresses for this request.
+
+No tracking, no accounts.

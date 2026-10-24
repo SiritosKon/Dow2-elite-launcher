@@ -47,6 +47,12 @@ struct Settings {
     prev_channel: Option<String>,
     /// Mirror that worked last time — tried first (R2 is blocked in some countries, our server in others).
     last_mirror: String,
+    /// Anonymous usage count (see usage_ping). None = on.
+    usage_stats: Option<bool>,
+    /// Random secret for the daily usage hash; never sent itself.
+    ping_secret: String,
+    /// Day number (UTC days since 1970) of the last successful usage ping.
+    ping_day: u64,
 }
 
 struct App {
@@ -202,6 +208,7 @@ fn get_status(app: State<'_, App>) -> Value {
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "guard": s.guard,
+        "usage_stats": s.usage_stats.unwrap_or(true),
         "costs": app.costs.lock().unwrap().clone(),
         "prev_channel": s.prev_channel.filter(|p| p != &channel && cfgd.channels.iter().any(|c| &c.id == p)),
         "main_channel": cfgd.channels.iter().find(|c| c.default).map(|c| c.id.clone()).unwrap_or_default(),
@@ -270,6 +277,7 @@ fn set_setting(app: State<'_, App>, key: String, value: Value) {
         "lang" => s.lang = value.as_str().unwrap_or("").to_string(),
         "extra_mirror" => s.extra_mirror = value.as_str().unwrap_or("").to_string(),
         "cache_mb" => s.cache_mb = value.as_u64(),
+        "usage_stats" => s.usage_stats = value.as_bool(),
         "dismiss" => {
             if let Some(id) = value.as_str() {
                 s.dismissed.push(id.to_string());
@@ -679,6 +687,43 @@ fn play(app: State<'_, App>) -> Result<(), String> {
     }
 }
 
+/// Anonymous usage count: at most one request per day, sent to the log hosts, carrying only
+/// sha256(random local secret + day number) cut to 128 bits, the launcher version, the OS and the installed Elite version.
+/// The hash changes every day, so even the server can't tell whether two days came from the same install.
+/// No hardware, Steam or account data, no game folder, no names. Off in Settings.
+fn usage_ping(app: &AppHandle) {
+    use sha2::{Digest, Sha256};
+    let st = app.state::<App>();
+    let day = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86400).unwrap_or(0);
+    let secret = {
+        let mut s = st.settings.lock().unwrap();
+        if !s.usage_stats.unwrap_or(true) || s.ping_day == day || day == 0 { return; }
+        if s.ping_secret.len() != 64 {
+            let mut b = [0u8; 32];
+            if getrandom::getrandom(&mut b).is_err() { return; }
+            s.ping_secret = b.iter().map(|x| format!("{x:02x}")).collect();
+            save_settings(&s);
+        }
+        s.ping_secret.clone()
+    };
+    let mut h = Sha256::new();
+    h.update(secret.as_bytes());
+    h.update(day.to_le_bytes());
+    let hash: String = h.finalize().iter().take(16).map(|x| format!("{x:02x}")).collect();
+    let elite = game_dir(&st).map(|d| update::Game::new(d).load_state().version).filter(|v| !v.is_empty()).unwrap_or_else(|| "none".into());
+    let elite: String = elite.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-').take(16).collect();
+    let hosts: Vec<&str> = option_env!("ELITE_LOG_HOSTS").unwrap_or("").split(';').map(str::trim).filter(|x| !x.is_empty()).collect();
+    for host in hosts {
+        let url = format!("{host}/stats/api/ping?h={hash}&v={LAUNCHER_VERSION}&os={}&elite={elite}", os_name());
+        if ureq::get(&url).timeout(Duration::from_secs(15)).call().is_ok() {
+            let mut s = st.settings.lock().unwrap();
+            s.ping_day = day;
+            save_settings(&s);
+            return;
+        }
+    }
+}
+
 fn main() {
     let settings = load_settings();
     let config = cached_config();
@@ -692,6 +737,16 @@ fn main() {
             cancel: Mutex::new(None),
             last_error: Mutex::new(String::new()),
             costs: Mutex::new(BTreeMap::new()),
+        })
+        .setup(|app| {
+            let h = app.handle().clone();
+            // once now (after the window is up) and then every few hours for launchers left open over midnight
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(30));
+                usage_ping(&h);
+                std::thread::sleep(Duration::from_secs(4 * 3600));
+            });
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_status, refresh, set_channel, switch_to, send_logs, set_comp_option, set_setting, set_component, remove_conflicts, set_guard, pick_game_dir, open_url, open_game_dir, start_update, cancel_update, play
