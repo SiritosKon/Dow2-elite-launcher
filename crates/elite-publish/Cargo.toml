@@ -1,0 +1,10 @@
+[package]
+name = "elite-publish"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Publish an Elite Mod build for the launcher: chunked manifest + content-addressed blobs + signatures"
+
+[dependencies]
+elite-core = { path = "../elite-core" }
+serde_json = "1"

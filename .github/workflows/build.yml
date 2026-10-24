@@ -1,0 +1,87 @@
+name: build
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # built-in mirror list (secret, not in the repo): "https://a/;https://b/"
+  ELITE_MIRRORS: ${{ secrets.ELITE_MIRRORS }}
+  # where "Send logs" uploads to (secret): "https://a;https://b"
+  ELITE_LOG_HOSTS: ${{ secrets.ELITE_LOG_HOSTS }}
+
+jobs:
+  launcher:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: "--bundles nsis"
+          - os: ubuntu-22.04
+            args: "--bundles deb,appimage"
+          - os: macos-latest
+            args: "--target universal-apple-darwin --bundles dmg"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - name: Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev patchelf
+      - run: cargo install tauri-cli --version "^2" --locked
+      - name: Build
+        working-directory: app
+        run: cargo tauri build ${{ matrix.args }}
+      # Windows: подпись через SignPath Foundation (бесплатно для OSS). Включится, когда в репозитории будут
+      # секрет SIGNPATH_API_TOKEN и переменные SIGNPATH_ORGANIZATION_ID / SIGNPATH_PROJECT_SLUG.
+      - name: Upload unsigned Windows installer
+        if: matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows
+          path: target/release/bundle/nsis/*.exe
+      - name: Sign with SignPath
+        if: matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+      - name: Upload signed Windows installer
+        if: matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: elite-launcher-windows-signed
+          path: signed/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elite-launcher-${{ matrix.os }}
+          path: |
+            target/**/release/bundle/nsis/*.exe
+            target/**/release/bundle/deb/*.deb
+            target/**/release/bundle/appimage/*.AppImage
+            target/**/release/bundle/dmg/*.dmg
+
+  publisher:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release -p elite-publish -p elite-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elite-publish-${{ matrix.os }}
+          path: |
+            target/release/elite-publish*
+            target/release/elite-cli*

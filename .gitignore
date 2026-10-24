@@ -1,0 +1,4 @@
+target/
+app/gen/
+*.key
+!keys/public.key

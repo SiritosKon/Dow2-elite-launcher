@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Elite Launcher</title>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><div class="logo" id="title">ELITE MOD</div><div class="sub" id="subtitle">Dawn of War II · Retribution</div></div>
+    <nav><button class="tab on" data-view="home" data-t="home"></button><button class="tab" data-view="settings" data-t="settings"></button></nav>
+  </header>
+
+  <div class="banner launcher-banner hidden" id="launcherBanner"></div>
+
+  <main id="home" class="view">
+    <section class="left">
+      <div id="announcements"></div>
+      <div id="setup" class="setup hidden"></div>
+      <div id="newsBox" class="panel news">
+        <div class="h" data-t="news"></div>
+        <div id="news"></div>
+        <button class="link-btn hidden" id="newsMore"></button>
+      </div>
+    </section>
+    <aside class="right">
+      <div class="panel">
+        <div class="h" data-t="version"></div>
+        <div id="channels"></div>
+        <div class="installed" id="installed"></div>
+      </div>
+      <div class="panel" id="compBox">
+        <div class="h" data-t="components"></div>
+        <div id="components"></div>
+      </div>
+      <div class="panel">
+        <div class="h" data-t="links"></div>
+        <div id="links" class="links"></div>
+        <button class="btn logs-home" id="sendLogsHome" data-t="sendLogsHome"></button>
+      </div>
+    </aside>
+  </main>
+
+  <main id="settings" class="view hidden">
+    <section class="panel settings">
+      <div class="h" data-t="settings"></div>
+      <label data-t="gameFolder"></label>
+      <div class="row"><div class="path" id="gameDir"></div><button class="btn" id="browse" data-t="browse"></button><button class="btn" id="openDir" data-t="open"></button></div>
+      <label data-t="language"></label>
+      <div class="row"><select id="lang"><option value="">Auto</option><option value="en">English</option><option value="ru">Русский</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option></select></div>
+      <label data-t="cache"></label>
+      <div class="row"><select id="cache"><option value="0">0</option><option value="2048">2 GB</option><option value="6144">6 GB</option><option value="12288">12 GB</option></select><span class="note" data-t="cacheNote"></span></div>
+      <label data-t="mirror"></label>
+      <div class="row"><input id="mirror" placeholder="https://example.org/elite/"><button class="btn" id="saveMirror" data-t="save"></button></div>
+      <div class="note" id="mirrorInfo"></div>
+      <label data-t="repairTitle"></label>
+      <div class="row"><button class="btn" id="repair" data-t="repair"></button><span class="note" data-t="repairNote"></span></div>
+      <label data-t="diagTitle"></label>
+      <div class="row"><input id="diagName" data-tp="diagName"><button class="btn gold" id="sendLogs" data-t="sendLogs"></button></div>
+      <div class="note" data-t="sendLogsNote"></div>
+      <div class="about" id="about"></div>
+    </section>
+  </main>
+
+  <div class="banner update-banner hidden" id="updateBanner"><span id="updateText"></span><button class="btn gold" id="updateBtn"></button></div>
+
+  <footer>
+    <div class="status">
+      <div id="statusText"></div>
+      <div class="bar hidden" id="bar"><i id="barFill"></i></div>
+      <div class="meta" id="statusMeta"></div>
+    </div>
+    <button class="btn hidden" id="cancel" data-t="cancel"></button>
+    <button class="btn quick hidden" id="quick"></button>
+    <div class="playbox"><button class="play" id="play"></button><div class="play-what" id="playWhat"></div></div>
+  </footer>
+</div>
+<div class="toast hidden" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

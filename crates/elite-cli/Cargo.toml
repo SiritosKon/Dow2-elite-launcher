@@ -1,0 +1,13 @@
+[package]
+name = "elite-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Console version of the Elite launcher (same core): for servers, scripts and tests"
+
+[[bin]]
+name = "elite-cli"
+path = "src/main.rs"
+
+[dependencies]
+elite-core = { path = "../elite-core" }
