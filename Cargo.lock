@@ -944,14 +944,14 @@ dependencies = [
 
 [[package]]
 name = "elite-cli"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "elite-core",
 ]
 
 [[package]]
 name = "elite-core"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "elite-launcher"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
@@ -982,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "elite-publish"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "elite-core",
  "serde_json",

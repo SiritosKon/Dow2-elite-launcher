@@ -63,6 +63,9 @@ pub struct Component {
     pub inject: String,
     /// Switches the player can tick under the component; each one is written to an ini file in the game folder.
     pub options: Vec<ComponentOption>,
+    /// Files (relative to the game folder) of a hand-installed copy of the same patch, e.g. "dow2-patches/ObsFix.dll"
+    /// from the stand-alone package. While any of them exists the launcher keeps its own copy off.
+    pub conflicts: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

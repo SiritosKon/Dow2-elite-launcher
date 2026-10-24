@@ -194,6 +194,7 @@ fn get_status(app: State<'_, App>) -> Value {
         "components": cfgd.components.iter().map(|c| json!({
             "id": c.id, "name": c.name, "description": c.description, "latest": c.version,
             "enabled": s.components.get(&c.id).copied().unwrap_or(c.default),
+            "conflicts": dir.as_ref().map(|d| found_conflicts(d, c)).unwrap_or_default(),
             "installed": dir.as_ref().map(|d| update::Game::component(d, &c.id).load_state().version).unwrap_or_default(),
             "options": c.options.iter().map(|o| json!({
                 "id": o.id, "name": o.name,
@@ -327,6 +328,67 @@ fn set_guard(app: State<'_, App>, guard: elite::Guard) -> Result<(), String> {
     Ok(())
 }
 
+/// Hand-installed copies of a component that are in the game folder right now (see Component::conflicts).
+fn found_conflicts(dir: &std::path::Path, c: &elite_core::config::Component) -> Vec<String> {
+    c.conflicts.iter().filter(|f| !f.contains("..") && update::Game::new(dir).file(f).is_file()).cloned().collect()
+}
+
+/// Component wanted by the player and not replaced by a hand-installed copy.
+fn comp_on(dir: &std::path::Path, c: &elite_core::config::Component, s: &Settings) -> bool {
+    s.components.get(&c.id).copied().unwrap_or(c.default) && found_conflicts(dir, c).is_empty()
+}
+
+/// Turn off launcher copies of components that now have a hand-installed copy (checked before every game start).
+fn drop_conflicting(dir: &std::path::Path, cfg: &LauncherConfig) {
+    let main = update::Game::new(dir);
+    for c in &cfg.components {
+        if found_conflicts(dir, c).is_empty() { continue; }
+        let g = update::Game::component(dir, &c.id);
+        if !g.load_state().version.is_empty() { let _ = g.uninstall(); }
+        if !c.inject.is_empty() {
+            if let Ok(names) = elite::set_injected_all(dir, &c.inject, false) {
+                for name in names { main.accept_local_edit(&name); }
+            }
+        }
+    }
+}
+
+/// Delete the hand-installed copy of a component: its files, their .ini next to them, and the stand-alone
+/// package's loader (winmm.dll + readmes) once its dow2-patches folder has no DLLs left.
+#[tauri::command]
+fn remove_conflicts(app: State<'_, App>, id: String) -> Result<Vec<String>, String> {
+    let dir = game_dir(&app).ok_or("game folder not found")?;
+    let cfg = app.config.lock().unwrap().clone().unwrap_or_default();
+    let c = cfg.components.iter().find(|c| c.id == id).ok_or("unknown add-on")?;
+    let g = update::Game::new(&dir);
+    let mut removed = Vec::new();
+    for f in found_conflicts(&dir, c) {
+        let p = g.file(&f);
+        std::fs::remove_file(&p).map_err(|e| format!("{f}: {e}"))?;
+        removed.push(f.clone());
+        let ini = p.with_extension("ini");
+        if ini.is_file() && std::fs::remove_file(&ini).is_ok() {
+            removed.push(f.rsplit_once('.').map(|(a, _)| format!("{a}.ini")).unwrap_or_default());
+        }
+    }
+    let pd = dir.join("dow2-patches");
+    let dlls_left = std::fs::read_dir(&pd).map(|rd| rd.flatten().any(|e| e.file_name().to_string_lossy().to_ascii_lowercase().ends_with(".dll"))).unwrap_or(false);
+    if !dlls_left {
+        // the loader names its folder in UTF-16, the readmes in plain text
+        let wide: Vec<u8> = "dow2-patches".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        let ours = |name: &str| std::fs::read(dir.join(name))
+            .map(|b| b.windows(12).any(|w| w == b"dow2-patches") || b.windows(wide.len()).any(|w| w == wide.as_slice()))
+            .unwrap_or(false);
+        for name in ["winmm.dll", "README_EN.txt", "README_RU.txt"] {
+            if ours(name) && std::fs::remove_file(dir.join(name)).is_ok() { removed.push(name.to_string()); }
+        }
+        if pd.is_dir() && std::fs::read_dir(&pd).map(|mut rd| rd.next().is_none()).unwrap_or(false) {
+            let _ = std::fs::remove_dir(&pd);
+        }
+    }
+    Ok(removed)
+}
+
 /// Install ticked components, remove unticked ones, keep Elite.launchconfig in sync.
 fn sync_components(dir: &std::path::Path, cfg: &LauncherConfig, s: &Settings, m: &Mirrors, progress: &mut dyn FnMut(&update::Progress)) -> Result<(), update::Error> {
     let main = update::Game::new(dir);
@@ -334,7 +396,7 @@ fn sync_components(dir: &std::path::Path, cfg: &LauncherConfig, s: &Settings, m:
         return Ok(()); // Elite itself is not installed yet
     }
     for c in &cfg.components {
-        let on = s.components.get(&c.id).copied().unwrap_or(c.default);
+        let on = comp_on(dir, c, s);
         let g = update::Game::component(dir, &c.id);
         if on {
             let man = update::load_manifest(&g, m, &c.version)?;
@@ -574,6 +636,7 @@ fn play(app: State<'_, App>) -> Result<(), String> {
     }
     let dir = game_dir(&app).ok_or("game folder not found")?;
     let cfg = app.config.lock().unwrap().clone().unwrap_or_default();
+    drop_conflicting(&dir, &cfg);
     let mut cmd = match os_name() {
         "windows" => cfg.launch.windows.clone(),
         "macos" => cfg.launch.macos.clone(),
@@ -631,7 +694,7 @@ fn main() {
             costs: Mutex::new(BTreeMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
-            get_status, refresh, set_channel, switch_to, send_logs, set_comp_option, set_setting, set_component, set_guard, pick_game_dir, open_url, open_game_dir, start_update, cancel_update, play
+            get_status, refresh, set_channel, switch_to, send_logs, set_comp_option, set_setting, set_component, remove_conflicts, set_guard, pick_game_dir, open_url, open_game_dir, start_update, cancel_update, play
         ])
         .run(tauri::generate_context!())
         .expect("error while running Elite Launcher");

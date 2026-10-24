@@ -51,6 +51,13 @@ const T = {
     "mirrors": "{n} mirror(s) configured",
     "allNews": "All news",
     "components": "Add-ons",
+    "conflictTitle": "This patch is already in your game folder",
+    "conflictText": "Found a hand-installed copy: {files}. It conflicts with the launcher version, so the launcher keeps its own copy off while these files are there.",
+    "conflictRemove": "Delete these files",
+    "conflictKeep": "Leave as is",
+    "conflictKeepNote": "Leave it as is and everything will work: the copy in the folder does the job.",
+    "conflictActive": "Using the copy from the game folder (dow2-patches) — the launcher version is off",
+    "conflictRemoved": "Deleted: {files}",
     "main": "Main",
     "mainNote": "the lobbies play this",
     "active": "Installed now",
@@ -117,6 +124,13 @@ const T = {
     "mirrors": "зеркал настроено: {n}",
     "allNews": "Все новости",
     "components": "Дополнения",
+    "conflictTitle": "Этот патч уже лежит в папке с игрой",
+    "conflictText": "Найдена копия, поставленная вручную: {files}. Она будет конфликтовать с версией из лаунчера, поэтому пока эти файлы на месте, лаунчер свою копию не включает.",
+    "conflictRemove": "Удалить эти файлы",
+    "conflictKeep": "Оставить как есть",
+    "conflictKeepNote": "Если оставить как есть — всё и так будет работать: копия в папке делает то же самое.",
+    "conflictActive": "Работает копия из папки игры (dow2-patches) — версия лаунчера отключена",
+    "conflictRemoved": "Удалено: {files}",
     "main": "Основная",
     "mainNote": "на ней играют в лобби",
     "active": "Сейчас стоит",
@@ -183,6 +197,13 @@ const T = {
     "mirrors": "{n} espejo(s) configurados",
     "allNews": "Todas las noticias",
     "components": "Complementos",
+    "conflictTitle": "Este parche ya está en la carpeta del juego",
+    "conflictText": "Se encontró una copia instalada a mano: {files}. Entra en conflicto con la versión del launcher, así que el launcher no activa la suya mientras estos archivos estén ahí.",
+    "conflictRemove": "Borrar estos archivos",
+    "conflictKeep": "Dejar como está",
+    "conflictKeepNote": "Si lo dejas como está, todo funcionará igual: la copia de la carpeta hace el mismo trabajo.",
+    "conflictActive": "Se usa la copia de la carpeta del juego (dow2-patches); la versión del launcher está desactivada",
+    "conflictRemoved": "Borrado: {files}",
     "main": "Principal",
     "mainNote": "se juega en los lobbies",
     "active": "Instalada",
@@ -249,6 +270,13 @@ const T = {
     "mirrors": "{n} miroir(s) configuré(s)",
     "allNews": "Toutes les actualités",
     "components": "Modules",
+    "conflictTitle": "Ce patch est déjà dans le dossier du jeu",
+    "conflictText": "Une copie installée à la main a été trouvée : {files}. Elle entre en conflit avec la version du launcher, donc le launcher garde la sienne désactivée tant que ces fichiers sont là.",
+    "conflictRemove": "Supprimer ces fichiers",
+    "conflictKeep": "Laisser tel quel",
+    "conflictKeepNote": "Si vous laissez tel quel, tout fonctionnera : la copie du dossier fait le même travail.",
+    "conflictActive": "La copie du dossier du jeu (dow2-patches) est utilisée — la version du launcher est désactivée",
+    "conflictRemoved": "Supprimé : {files}",
     "main": "Principale",
     "mainNote": "c'est celle des lobbies",
     "active": "Installée",
@@ -315,6 +343,13 @@ const T = {
     "mirrors": "{n} Mirror(s) eingerichtet",
     "allNews": "Alle Neuigkeiten",
     "components": "Erweiterungen",
+    "conflictTitle": "Dieser Patch liegt schon im Spielordner",
+    "conflictText": "Eine von Hand installierte Kopie wurde gefunden: {files}. Sie kollidiert mit der Launcher-Version, daher lässt der Launcher seine eigene aus, solange diese Dateien da sind.",
+    "conflictRemove": "Diese Dateien löschen",
+    "conflictKeep": "So lassen",
+    "conflictKeepNote": "Wenn du es so lässt, funktioniert trotzdem alles: die Kopie im Ordner erledigt dasselbe.",
+    "conflictActive": "Die Kopie aus dem Spielordner (dow2-patches) wird verwendet – die Launcher-Version ist aus",
+    "conflictRemoved": "Gelöscht: {files}",
     "main": "Haupt",
     "mainNote": "diese Version spielen die Lobbys",
     "active": "Jetzt installiert",
@@ -430,11 +465,19 @@ function render() {
       + (c.latest && c.latest !== c.installed ? ' <span class="tag">→ v' + esc(vshort(c, c.latest)) + '</span>' : '');
   const comps = S.components || [];
   $('compBox').classList.toggle('hidden', !comps.length);
-  $('components').innerHTML = comps.map(c => `<label class="comp"><input type="checkbox" data-id="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${S.busy ? 'disabled' : ''}><div><b>${esc(L(c.name) || c.id)}${compVer(c)}</b><small>${esc(L(c.description))}</small></div></label>`
+  $('components').innerHTML = comps.map(c => `<label class="comp"><input type="checkbox" data-id="${esc(c.id)}" ${c.enabled ? 'checked' : ''} ${S.busy ? 'disabled' : ''}><div><b>${esc(L(c.name) || c.id)}${compVer(c)}</b><small>${esc(L(c.description))}</small>${c.enabled && (c.conflicts || []).length ? `<small class="warn">${esc(t('conflictActive'))}</small>` : ''}</div></label>`
     + (c.options || []).map(o => `<label class="opt"><input type="checkbox" data-comp="${esc(c.id)}" data-opt="${esc(o.id)}" ${o.on ? 'checked' : ''} ${!c.enabled || S.busy ? 'disabled' : ''}><span>${esc(L(o.name) || o.id)}</span></label>`).join('')).join('');
   $('components').querySelectorAll('input[data-opt]').forEach(cb => cb.onchange = () =>
     invoke('set_comp_option', { comp: cb.dataset.comp, opt: cb.dataset.opt, on: cb.checked }).then(reload).catch(e => toast(e, true)));
   $('components').querySelectorAll('input[data-id]').forEach(cb => cb.onchange = async () => {
+    const comp = comps.find(c => c.id === cb.dataset.id);
+    if (cb.checked && comp && (comp.conflicts || []).length) {
+      const del = await askConflict(comp.conflicts);
+      if (del) {
+        try { toast(t('conflictRemoved', { files: (await invoke('remove_conflicts', { id: comp.id })).join(', ') })); }
+        catch (e) { toast(e, true); }
+      }
+    }
     await invoke('set_component', { id: cb.dataset.id, on: cb.checked });
     if (S.installed_version) { try { await invoke('start_update', { repair: false, componentsOnly: true }); S.busy = true; render(); } catch (e) { toast(e, true); } }
     else reload();
@@ -494,12 +537,27 @@ function renderProgress(p) {
   $('statusMeta').textContent = t('meta', { dl: mb(p.downloaded), re: mb(p.reused), fc: mb(p.from_cache), m: p.mirror });
 }
 
+// the add-on is already installed by hand (stand-alone dow2-patches package): delete those files or keep them
+function askConflict(files) {
+  return new Promise(done => {
+    const m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = `<div class="box"><h3>${esc(t('conflictTitle'))}</h3><p>${esc(t('conflictText', { files: files.join(', ') }))}</p>
+      <p class="note">${esc(t('conflictKeepNote'))}</p><div class="row"><button class="btn red" id="cfDel">${esc(t('conflictRemove'))}</button>
+      <button class="btn gold" id="cfKeep">${esc(t('conflictKeep'))}</button></div></div>`;
+    document.body.appendChild(m);
+    const close = v => { m.remove(); done(v); };
+    m.querySelector('#cfDel').onclick = () => close(true);
+    m.querySelector('#cfKeep').onclick = () => close(false);
+  });
+}
+
 async function reload() { S = await invoke('get_status'); render(); }
 async function refresh() {
   try { S = await invoke('refresh'); render(); } catch (e) { toast(e, true); return; }
   // add-ons follow their checkboxes on their own: install missing ones, remove unticked ones
   const comps = S.components || [];
-  if (S.installed_version && !S.busy && comps.some(c => c.enabled !== !!c.installed)) {
+  if (S.installed_version && !S.busy && comps.some(c => (c.enabled && !(c.conflicts || []).length) !== !!c.installed)) {
     try { await invoke('start_update', { repair: false, componentsOnly: true }); S.busy = true; render(); } catch (e) { /* will retry next refresh */ }
   }
 }

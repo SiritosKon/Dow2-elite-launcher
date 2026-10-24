@@ -99,3 +99,9 @@ input[type=number]{color:var(--bone)}
 .opt input{margin:0}
 .opt span{flex:1;text-align:left}
 .btn.logs-home{width:100%;margin-top:10px}
+.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:50}
+.modal .box{background:#1c1813;border:1px solid var(--gold);padding:18px 20px;max-width:520px;box-shadow:0 10px 40px #000}
+.modal h3{font:700 16px Cinzel,serif;margin:0 0 10px;color:var(--gold2)}
+.modal p{font-size:14px;margin:0 0 10px;line-height:1.4}
+.modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.comp small.warn{display:block;color:var(--gold2);margin-top:3px}
