@@ -89,45 +89,30 @@ fn set_injected_file(path: &Path, dll: &str, enable: bool) -> std::io::Result<bo
     Ok(changed)
 }
 
-/// Host filter rules for LobbyStats (written to Elite_DLLs/LobbyStats.ini).
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct Guard {
-    pub show_rating_in_name: Option<bool>,
-    pub enabled: bool,
-    pub dry_run: Option<bool>,
-    pub min_rating: u32,
-    pub max_rating: u32,
-    pub min_win_rate: u32,
-    pub max_win_rate: u32,
-    pub min_games: u32,
-    pub min_hours: u32,
-    pub kick_unknown: bool,
-    pub kick_delay: Option<u32>,
-}
-
-/// Create the default LobbyStats.ini if there is none. The host changes the rules in the game itself
-/// (`!filter …` in lobby chat), so an existing file is never overwritten.
-pub fn write_lobbystats_ini(game_dir: &Path, g: &Guard) -> std::io::Result<()> {
+/// LobbyStats.ini: keep the player's own lines, drop everything left over from the old host filter
+/// (the [Guard], [UI] and [Chat] sections and the "!filter" hint). Creates a minimal file if there is none.
+pub fn clean_lobbystats_ini(game_dir: &Path) -> std::io::Result<()> {
     let dir = game_dir.join("Elite_DLLs");
-    if dir.join("LobbyStats.ini").exists() {
-        return Ok(());
+    let path = dir.join("LobbyStats.ini");
+    let old = fs::read_to_string(&path).unwrap_or_default();
+    let mut out = String::new();
+    let mut skip = false;
+    for line in old.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            let sec = t.to_ascii_lowercase();
+            skip = sec == "[guard]" || sec == "[ui]" || sec == "[chat]";
+        }
+        if skip || t.contains("!filter") { continue; }
+        out.push_str(line);
+        out.push_str("\r\n");
     }
-    fs::create_dir_all(&dir)?;
-    let b = |x: bool| if x { 1 } else { 0 };
-    let ini = format!(
-        "; Lobby filter: set it in the lobby chat as host, e.g. !filter 1500-2400 wr55 h500 live  (type !filter for help)\r\n[LobbyStats]\r\nShowRatingInName={}\r\n\r\n[Guard]\r\nEnabled={}\r\nDryRun={}\r\nMinRating={}\r\nMaxRating={}\r\nMinWinRate={}\r\nMaxWinRate={}\r\nMinGames={}\r\nMinHours={}\r\nKickUnknown={}\r\nKickDelaySeconds={}\r\n",
-        b(g.show_rating_in_name.unwrap_or(true)),
-        b(g.enabled),
-        b(g.dry_run.unwrap_or(true)),
-        g.min_rating,
-        g.max_rating,
-        g.min_win_rate,
-        g.max_win_rate,
-        g.min_games,
-        g.min_hours,
-        b(g.kick_unknown),
-        g.kick_delay.unwrap_or(5)
-    );
-    fs::write(dir.join("LobbyStats.ini"), ini)
+    if !out.to_ascii_lowercase().contains("[lobbystats]") {
+        out = format!("[LobbyStats]\r\nShowRatingInName=1\r\n{out}");
+    }
+    if out != old {
+        fs::create_dir_all(&dir)?;
+        fs::write(&path, out)?;
+    }
+    Ok(())
 }

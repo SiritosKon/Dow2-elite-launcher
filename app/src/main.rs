@@ -41,8 +41,6 @@ struct Settings {
     components: BTreeMap<String, bool>,
     /// "component.option" → ticked by the player (missing = option default).
     comp_options: BTreeMap<String, bool>,
-    /// LobbyStats host filter rules.
-    guard: elite::Guard,
     /// Channel the player switched away from — the quick "back to …" button.
     prev_channel: Option<String>,
     /// Mirror that worked last time — tried first (R2 is blocked in some countries, our server in others).
@@ -207,7 +205,6 @@ fn get_status(app: State<'_, App>) -> Value {
                 "on": s.comp_options.get(&format!("{}.{}", c.id, o.id)).copied().unwrap_or(o.default),
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
-        "guard": s.guard,
         "usage_stats": s.usage_stats.unwrap_or(true),
         "costs": app.costs.lock().unwrap().clone(),
         "prev_channel": s.prev_channel.filter(|p| p != &channel && cfgd.channels.iter().any(|c| &c.id == p)),
@@ -321,21 +318,6 @@ fn set_comp_option(app: State<'_, App>, comp: String, opt: String, on: bool) {
     }
 }
 
-/// Save the LobbyStats host filter and write it to the game folder right away.
-#[tauri::command]
-fn set_guard(app: State<'_, App>, guard: elite::Guard) -> Result<(), String> {
-    let mut s = app.settings.lock().unwrap();
-    s.guard = guard;
-    save_settings(&s);
-    drop(s);
-    if let Some(d) = game_dir(&app) {
-        if !update::Game::component(&d, "lobbystats").load_state().version.is_empty() {
-            elite::write_lobbystats_ini(&d, &app.settings.lock().unwrap().guard).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
-}
-
 /// Hand-installed copies of a component that are in the game folder right now (see Component::conflicts).
 fn found_conflicts(dir: &std::path::Path, c: &elite_core::config::Component) -> Vec<String> {
     c.conflicts.iter().filter(|f| !f.contains("..") && update::Game::new(dir).file(f).is_file()).cloned().collect()
@@ -410,7 +392,7 @@ fn sync_components(dir: &std::path::Path, cfg: &LauncherConfig, s: &Settings, m:
             let man = update::load_manifest(&g, m, &c.version)?;
             update::apply(&g, m, &man, &update::Options { verify_all: false, cache_limit: s.cache_mb.unwrap_or(DEFAULT_CACHE_MB) << 20, channel: c.id.clone() }, progress)?;
             if c.id == "lobbystats" {
-                elite::write_lobbystats_ini(dir, &s.guard).map_err(|e| update::Error::Io(e.to_string()))?;
+                elite::clean_lobbystats_ini(dir).map_err(|e| update::Error::Io(e.to_string()))?;
             }
         } else if !g.load_state().version.is_empty() {
             g.uninstall()?;
@@ -749,7 +731,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_status, refresh, set_channel, switch_to, send_logs, set_comp_option, set_setting, set_component, remove_conflicts, set_guard, pick_game_dir, open_url, open_game_dir, start_update, cancel_update, play
+            get_status, refresh, set_channel, switch_to, send_logs, set_comp_option, set_setting, set_component, remove_conflicts, pick_game_dir, open_url, open_game_dir, start_update, cancel_update, play
         ])
         .run(tauri::generate_context!())
         .expect("error while running Elite Launcher");

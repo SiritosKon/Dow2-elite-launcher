@@ -77,7 +77,7 @@ const T = {
     "diagTitle": "Help the developers",
     "diagName": "Your nickname (optional)",
     "sendLogs": "Send logs",
-    "sendLogsNote": "sends the logs of the add-ons and the game (lobby filter, observer lag, Continue button) to the developer",
+    "sendLogsNote": "sends the logs of the add-ons and the game (lobby stats, observer lag, Continue button) to the developer",
     "logsSent": "Logs sent, thank you! Reference: {id}",
     "sending": "Sending…",
     "sendLogsHome": "📋 Send logs to the developer"
@@ -153,7 +153,7 @@ const T = {
     "diagTitle": "Помочь разработчикам",
     "diagName": "Ваш ник (необязательно)",
     "sendLogs": "Отправить логи",
-    "sendLogsNote": "отправляет разработчику логи дополнений и игры (фильтр лобби, тормоза обсервера, кнопка Continue)",
+    "sendLogsNote": "отправляет разработчику логи дополнений и игры (статистика лобби, тормоза обсервера, кнопка Continue)",
     "logsSent": "Логи отправлены, спасибо! Номер: {id}",
     "sending": "Отправляю…",
     "sendLogsHome": "📋 Отправить логи разработчику"
@@ -229,7 +229,7 @@ const T = {
     "diagTitle": "Ayuda a los desarrolladores",
     "diagName": "Tu nick (opcional)",
     "sendLogs": "Enviar registros",
-    "sendLogsNote": "envía al desarrollador los registros de los complementos y del juego (filtro del lobby, lag del observador, botón Continue)",
+    "sendLogsNote": "envía al desarrollador los registros de los complementos y del juego (estadísticas del lobby, lag del observador, botón Continue)",
     "logsSent": "Registros enviados, ¡gracias! Referencia: {id}",
     "sending": "Enviando…",
     "sendLogsHome": "📋 Enviar registros al desarrollador"
@@ -305,7 +305,7 @@ const T = {
     "diagTitle": "Aider les développeurs",
     "diagName": "Votre pseudo (facultatif)",
     "sendLogs": "Envoyer les journaux",
-    "sendLogsNote": "envoie au développeur les journaux des modules et du jeu (filtre du lobby, lag de l'observateur, bouton Continue)",
+    "sendLogsNote": "envoie au développeur les journaux des modules et du jeu (statistiques du lobby, lag de l'observateur, bouton Continue)",
     "logsSent": "Journaux envoyés, merci ! Référence : {id}",
     "sending": "Envoi…",
     "sendLogsHome": "📋 Envoyer les journaux au développeur"
@@ -381,7 +381,7 @@ const T = {
     "diagTitle": "Den Entwicklern helfen",
     "diagName": "Dein Nickname (optional)",
     "sendLogs": "Logs senden",
-    "sendLogsNote": "schickt dem Entwickler die Logs der Erweiterungen und des Spiels (Lobby-Filter, Beobachter-Lag, Continue-Knopf)",
+    "sendLogsNote": "schickt dem Entwickler die Logs der Erweiterungen und des Spiels (Lobby-Statistik, Beobachter-Lag, Continue-Knopf)",
     "logsSent": "Logs gesendet, danke! Nummer: {id}",
     "sending": "Sende…",
     "sendLogsHome": "📋 Logs an den Entwickler senden"
@@ -573,7 +573,7 @@ async function refresh() {
   try { S = await invoke('refresh'); render(); } catch (e) { toast(e, true); return; }
   // add-ons follow their checkboxes on their own: install missing ones, remove unticked ones
   const comps = S.components || [];
-  if (S.installed_version && !S.busy && comps.some(c => (c.enabled && !(c.conflicts || []).length) !== !!c.installed)) {
+  if (S.installed_version && !S.busy && comps.some(c => { const want = c.enabled && !(c.conflicts || []).length; return want !== !!c.installed || (want && c.latest && c.installed && c.installed !== c.latest); })) {
     try { await invoke('start_update', { repair: false, componentsOnly: true }); S.busy = true; render(); } catch (e) { /* will retry next refresh */ }
   }
 }
