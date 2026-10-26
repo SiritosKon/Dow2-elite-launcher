@@ -284,8 +284,70 @@ pub struct Summary {
     pub from_cache: u64,
 }
 
+/// Elite was installed by hand (or by an older tool) and the launcher has no state for it yet.
+/// If every file of `man` is there with the right size, and every small file (< 8 MB) also has the right
+/// SHA-256, the folder is taken as this version without hashing gigabytes: the state is written and the
+/// next update/start is instant. Big files are trusted by size; "Repair" re-hashes everything.
+pub fn adopt_existing(game: &Game, man: &Manifest, channel: &str) -> bool {
+    if !game.load_state().files.is_empty() || man.files.is_empty() {
+        return false;
+    }
+    // every big file (the archives) must match by size; small files that differ (e.g. an edited
+    // Elite.launchconfig) are just left out of the state, so the normal update fixes only them
+    let mut files = Vec::with_capacity(man.files.len());
+    for f in &man.files {
+        let path = game.file(&f.path);
+        let cur = mtime(&path);
+        let big = f.size >= (8 << 20);
+        let ok = match cur {
+            Some((size, _)) if size == f.size => big || matches!(File::open(&path).and_then(cdc::sha256), Ok((sha, _)) if sha == f.sha),
+            _ => false,
+        };
+        if !ok {
+            if big {
+                return false;
+            }
+            continue;
+        }
+        let (size, mt) = cur.unwrap();
+        files.push(StateFile { path: f.path.clone(), size, mtime: mt, sha: hex(&f.sha) });
+    }
+    if files.is_empty() {
+        return false;
+    }
+    game.save_state(&State { version: man.version.clone(), channel: channel.to_string(), files }).is_ok()
+}
+
+/// SHA-256 of a file, reporting progress every 32 MB so a big archive doesn't look like a hang.
+fn sha256_progress(path: &Path, cancel: &std::sync::atomic::AtomicBool, tick: &mut dyn FnMut(u64)) -> std::io::Result<([u8; 32], u64)> {
+    use sha2::{Digest, Sha256};
+    let mut r = File::open(path)?;
+    let mut s = Sha256::new();
+    let mut buf = vec![0u8; 1 << 22];
+    let (mut size, mut last) = (0u64, 0u64);
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "cancelled"));
+        }
+        let n = r.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        s.update(&buf[..n]);
+        size += n as u64;
+        if size - last >= 32 << 20 {
+            last = size;
+            tick(size);
+        }
+    }
+    Ok((s.finalize().into(), size))
+}
+
 /// Bring the game folder to `man`. Calls `progress` often; cancel through `m.cancel`.
 pub fn apply(game: &Game, m: &Mirrors, man: &Manifest, opt: &Options, progress: &mut dyn FnMut(&Progress)) -> Result<Summary, Error> {
+    if !opt.verify_all {
+        adopt_existing(game, man, &opt.channel);
+    }
     let old = game.load_state();
     let known: HashMap<&str, &StateFile> = old.files.iter().map(|f| (f.path.as_str(), f)).collect();
     let mut p = Progress { phase: "checking".into(), files_total: man.files.len(), mirror: m.current_host(), ..Default::default() };
@@ -308,7 +370,16 @@ pub fn apply(game: &Game, m: &Mirrors, man: &Manifest, opt: &Options, progress: 
         let trusted = !opt.verify_all
             && matches!((cur, known.get(f.path.as_str())), (Some((sz, mt)), Some(s)) if s.size == sz && s.mtime == mt && s.sha == shahex && sz == f.size);
         if !trusted {
-            let have = File::open(&path).and_then(cdc::sha256).ok();
+            let base = p.bytes_done;
+            let have = match sha256_progress(&path, &m.cancel, &mut |done| {
+                let mut q = p.clone();
+                q.bytes_done = base + done.min(f.size);
+                progress(&q);
+            }) {
+                Ok(v) => Some(v),
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => return Err(Error::Cancelled),
+                Err(_) => None,
+            };
             match have {
                 Some((sha, sz)) if sha == f.sha && sz == f.size => {}
                 Some((sha, _)) => todo.push((f, Some(sha))),

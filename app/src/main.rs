@@ -51,6 +51,9 @@ struct Settings {
     ping_secret: String,
     /// Day number (UTC days since 1970) of the last successful usage ping.
     ping_day: u64,
+    /// Feedback chat: random id that ties the player's messages together (kept across restarts), and the name they gave.
+    fb_uid: String,
+    fb_name: String,
 }
 
 struct App {
@@ -71,6 +74,18 @@ fn compute_costs(app: &AppHandle) {
     let s = st.settings.lock().unwrap().clone();
     let m = mirrors(&s, Some(&cfg));
     let g = update::Game::new(&dir);
+    // Elite already in the folder but not installed by the launcher: recognise the version (main channel first)
+    if g.load_state().files.is_empty() && dir.join("Elite.module").is_file() && !st.busy.load(Ordering::Relaxed) {
+        let mut chans: Vec<_> = cfg.channels.iter().collect();
+        chans.sort_by_key(|c| !c.default);
+        for c in chans {
+            if let Ok(man) = update::load_manifest(&g, &m, &c.version) {
+                if update::adopt_existing(&g, &man, &c.id) {
+                    break;
+                }
+            }
+        }
+    }
     let mut out = BTreeMap::new();
     for c in &cfg.channels {
         if let Ok(man) = update::load_manifest(&g, &m, &c.version) {
@@ -669,6 +684,83 @@ fn play(app: State<'_, App>) -> Result<(), String> {
     }
 }
 
+// ---------- Feedback chat with the developers ----------
+// Messages and pasted pictures go to the ladder service on the log hosts (/ladder/api/fb/*), answers come back the same way.
+// The player is known only by a random id kept in the settings, plus the name they chose to give.
+fn fb_hosts() -> Vec<String> {
+    option_env!("ELITE_LOG_HOSTS").unwrap_or("").split(';').map(str::trim).filter(|x| !x.is_empty()).map(String::from).collect()
+}
+fn fb_uid(app: &App) -> String {
+    let mut s = app.settings.lock().unwrap();
+    if s.fb_uid.len() < 16 {
+        let mut b = [0u8; 18];
+        if getrandom::getrandom(&mut b).is_ok() {
+            s.fb_uid = b.iter().map(|x| format!("{x:02x}")).collect();
+            save_settings(&s);
+        }
+    }
+    s.fb_uid.clone()
+}
+
+#[tauri::command]
+fn fb_info(app: State<'_, App>) -> Value {
+    let uid = fb_uid(&app);
+    json!({"uid": uid, "name": app.settings.lock().unwrap().fb_name.clone(), "configured": !fb_hosts().is_empty()})
+}
+
+#[tauri::command]
+fn fb_set_name(app: State<'_, App>, name: String) {
+    let mut s = app.settings.lock().unwrap();
+    s.fb_name = name.trim().chars().take(48).collect();
+    save_settings(&s);
+}
+
+#[tauri::command]
+async fn fb_send(app: AppHandle, text: String, images: Vec<String>) -> Result<Value, String> {
+    let st = app.state::<App>();
+    let uid = fb_uid(&st);
+    let name = st.settings.lock().unwrap().fb_name.clone();
+    let elite = game_dir(&st).map(|d| update::Game::new(d).load_state().version).unwrap_or_default();
+    let body = json!({"uid": uid, "name": name, "text": text, "images": images,
+                      "launcher": LAUNCHER_VERSION, "os": os_name(), "elite": elite}).to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut last = "feedback is not configured in this build".to_string();
+        for host in fb_hosts() {
+            match ureq::post(&format!("{host}/ladder/api/fb/send")).timeout(Duration::from_secs(60))
+                .set("Content-Type", "application/json").send_string(&body) {
+                Ok(r) => {
+                    let v: Value = serde_json::from_str(&r.into_string().unwrap_or_default()).unwrap_or_default();
+                    if v["ok"].as_bool() == Some(true) { return Ok(v); }
+                    return Err(v["error"].as_str().unwrap_or("rejected").to_string());
+                }
+                Err(e) => last = e.to_string(),
+            }
+        }
+        Err(last)
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// The whole conversation; picture links point to the host that answered.
+#[tauri::command]
+async fn fb_thread(app: AppHandle) -> Result<Value, String> {
+    let uid = fb_uid(&app.state::<App>());
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut last = "feedback is not configured in this build".to_string();
+        for host in fb_hosts() {
+            match ureq::get(&format!("{host}/ladder/api/fb/thread?uid={uid}")).timeout(Duration::from_secs(20)).call() {
+                Ok(r) => {
+                    let mut v: Value = serde_json::from_str(&r.into_string().unwrap_or_default()).unwrap_or_default();
+                    v["img_base"] = json!(format!("{host}/ladder/api/fb/img/"));
+                    v["uid"] = json!(uid);
+                    return Ok(v);
+                }
+                Err(e) => last = e.to_string(),
+            }
+        }
+        Err(last)
+    }).await.map_err(|e| e.to_string())?
+}
+
 /// Anonymous usage count: at most one request per day, sent to the log hosts, carrying only
 /// sha256(random local secret + day number) cut to 128 bits, the launcher version, the OS and the installed Elite version.
 /// The hash changes every day, so even the server can't tell whether two days came from the same install.
@@ -731,7 +823,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_status, refresh, set_channel, switch_to, send_logs, set_comp_option, set_setting, set_component, remove_conflicts, pick_game_dir, open_url, open_game_dir, start_update, cancel_update, play
+            get_status, refresh, set_channel, switch_to, send_logs, set_comp_option, set_setting, set_component, remove_conflicts, pick_game_dir, open_url, open_game_dir, start_update, cancel_update, play,
+            fb_info, fb_set_name, fb_send, fb_thread
         ])
         .run(tauri::generate_context!())
         .expect("error while running Elite Launcher");

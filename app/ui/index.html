@@ -19,10 +19,17 @@
     <section class="left">
       <div id="announcements"></div>
       <div id="setup" class="setup hidden"></div>
-      <div id="newsBox" class="panel news">
-        <div class="h" data-t="news"></div>
-        <div id="news"></div>
-        <button class="link-btn hidden" id="newsMore"></button>
+      <div id="newsBox" class="panel news fb">
+        <div class="h" data-t="fbTitle"></div>
+        <div class="fb-who"><span data-t="fbName"></span> <input id="fbName" maxlength="48"><span class="fb-id" id="fbId"></span></div>
+        <div id="fbMsgs" class="fb-msgs"></div>
+        <div id="fbPics" class="fb-pics"></div>
+        <div class="fb-send">
+          <textarea id="fbText" rows="3" data-tp="fbPlaceholder"></textarea>
+          <div class="fb-btns"><button class="link-btn" id="fbAttach" data-t="fbAttach"></button><button class="btn-gold" id="fbSend" data-t="fbSend"></button></div>
+        </div>
+        <input type="file" id="fbFile" accept="image/*" multiple class="hidden">
+        <div id="news" class="hidden"></div><button class="link-btn hidden" id="newsMore"></button>
       </div>
     </section>
     <aside class="right">

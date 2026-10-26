@@ -7,6 +7,16 @@ const $ = id => document.getElementById(id);
 
 const T = {
   en: {
+    "fbTitle": "Write to the developers",
+    "fbName": "Your name:",
+    "fbAttach": "🖼 Picture",
+    "fbSend": "Send",
+    "fbPlaceholder": "Bug, idea, question… Paste a screenshot with Ctrl+V. Answers appear here.",
+    "fbEmpty": "No messages yet. Tell us what is wrong or what you would like — we read everything and answer here.",
+    "fbSent": "Sent, thank you!",
+    "fbDev": "Elite developers",
+    "fbMe": "You",
+    "fbTooBig": "Picture is too big (max 8 MB)",
     "home": "Home",
     "settings": "Settings",
     "news": "News",
@@ -83,6 +93,16 @@ const T = {
     "sendLogsHome": "📋 Send logs to the developer"
   },
   ru: {
+    "fbTitle": "Написать разработчикам",
+    "fbName": "Как вас зовут:",
+    "fbAttach": "🖼 Картинка",
+    "fbSend": "Отправить",
+    "fbPlaceholder": "Баг, идея, вопрос… Скриншот можно вставить через Ctrl+V. Ответ придёт сюда.",
+    "fbEmpty": "Сообщений пока нет. Напишите, что не так или чего хочется — читаем всё и отвечаем здесь.",
+    "fbSent": "Отправлено, спасибо!",
+    "fbDev": "Разработчики Elite",
+    "fbMe": "Вы",
+    "fbTooBig": "Картинка слишком большая (до 8 МБ)",
     "home": "Главная",
     "settings": "Настройки",
     "news": "Новости",
@@ -159,6 +179,16 @@ const T = {
     "sendLogsHome": "📋 Отправить логи разработчику"
   },
   es: {
+    "fbTitle": "Escribir a los desarrolladores",
+    "fbName": "Tu nombre:",
+    "fbAttach": "🖼 Imagen",
+    "fbSend": "Enviar",
+    "fbPlaceholder": "Error, idea, pregunta… Pega una captura con Ctrl+V. La respuesta llegará aquí.",
+    "fbEmpty": "Aún no hay mensajes.",
+    "fbSent": "¡Enviado, gracias!",
+    "fbDev": "Desarrolladores de Elite",
+    "fbMe": "Tú",
+    "fbTooBig": "Imagen demasiado grande (máx. 8 MB)",
     "home": "Inicio",
     "settings": "Ajustes",
     "news": "Noticias",
@@ -235,6 +265,16 @@ const T = {
     "sendLogsHome": "📋 Enviar registros al desarrollador"
   },
   fr: {
+    "fbTitle": "Écrire aux développeurs",
+    "fbName": "Votre nom :",
+    "fbAttach": "🖼 Image",
+    "fbSend": "Envoyer",
+    "fbPlaceholder": "Bug, idée, question… Collez une capture avec Ctrl+V. La réponse arrivera ici.",
+    "fbEmpty": "Pas encore de messages.",
+    "fbSent": "Envoyé, merci !",
+    "fbDev": "Développeurs d'Elite",
+    "fbMe": "Vous",
+    "fbTooBig": "Image trop grande (max 8 Mo)",
     "home": "Accueil",
     "settings": "Paramètres",
     "news": "Actualités",
@@ -311,6 +351,16 @@ const T = {
     "sendLogsHome": "📋 Envoyer les journaux au développeur"
   },
   de: {
+    "fbTitle": "An die Entwickler schreiben",
+    "fbName": "Dein Name:",
+    "fbAttach": "🖼 Bild",
+    "fbSend": "Senden",
+    "fbPlaceholder": "Fehler, Idee, Frage… Screenshot mit Strg+V einfügen. Die Antwort kommt hierher.",
+    "fbEmpty": "Noch keine Nachrichten.",
+    "fbSent": "Gesendet, danke!",
+    "fbDev": "Elite-Entwickler",
+    "fbMe": "Du",
+    "fbTooBig": "Bild zu groß (max. 8 MB)",
     "home": "Start",
     "settings": "Einstellungen",
     "news": "Neuigkeiten",
@@ -628,3 +678,60 @@ $('sendLogsHome').onclick = () => sendLogs($('sendLogsHome'), 'sendLogsHome');
 
 reload().then(refresh);
 setInterval(() => { if (S && !S.busy) refresh(); }, 15 * 60 * 1000);   // pick up new versions and announcements
+
+
+// ---------- feedback chat with the developers ----------
+const FB = { pics: [], last: '', timer: null };
+async function fbInit() {
+  try {
+    const i = await invoke('fb_info');
+    $('fbName').value = i.name || ''; $('fbId').textContent = 'id ' + i.uid.slice(0, 8);
+  } catch (e) {}
+  $('fbName').onchange = () => invoke('fb_set_name', { name: $('fbName').value });
+  $('fbText').placeholder = t('fbPlaceholder');
+  $('fbSend').onclick = fbSend;
+  $('fbText').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) fbSend(); };
+  $('fbAttach').onclick = () => $('fbFile').click();
+  $('fbFile').onchange = e => { [...e.target.files].forEach(fbAddFile); e.target.value = ''; };
+  document.addEventListener('paste', e => {
+    const items = [...(e.clipboardData?.items || [])].filter(i => i.type.startsWith('image/'));
+    if (!items.length) return;
+    e.preventDefault(); items.forEach(i => fbAddFile(i.getAsFile()));
+  });
+  fbLoad(); FB.timer = setInterval(fbLoad, 20000);
+}
+function fbAddFile(f) {
+  if (!f) return;
+  if (f.size > 8 << 20) return toast(t('fbTooBig'), true);
+  const r = new FileReader();
+  r.onload = () => { FB.pics.push(r.result); fbPics(); };
+  r.readAsDataURL(f);
+}
+function fbPics() {
+  $('fbPics').innerHTML = FB.pics.map((p, i) => `<div><img src="${p}"><b data-i="${i}">×</b></div>`).join('');
+  $('fbPics').querySelectorAll('b').forEach(b => b.onclick = () => { FB.pics.splice(+b.dataset.i, 1); fbPics(); });
+}
+async function fbSend() {
+  const text = $('fbText').value.trim();
+  if (!text && !FB.pics.length) return;
+  $('fbSend').disabled = true;
+  try {
+    await invoke('fb_set_name', { name: $('fbName').value });
+    await invoke('fb_send', { text, images: FB.pics });
+    $('fbText').value = ''; FB.pics = []; fbPics(); toast(t('fbSent')); fbLoad();
+  } catch (e) { toast(e, true); }
+  $('fbSend').disabled = false;
+}
+async function fbLoad() {
+  let d; try { d = await invoke('fb_thread'); } catch (e) { return; }
+  const key = JSON.stringify(d.messages.map(m => m.id));
+  if (key === FB.last) return; FB.last = key;
+  const box = $('fbMsgs'), atEnd = box.scrollTop + box.clientHeight > box.scrollHeight - 30;
+  const when = ts => new Date(ts * 1000).toLocaleString(lang, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  box.innerHTML = d.messages.length ? d.messages.map(m => `<div class="fb-m ${m.author === 'dev' ? 'dev' : 'me'}"><div class="w">${esc(m.author === 'dev' ? t('fbDev') : (m.name || t('fbMe')))} · ${when(m.ts)}</div>${esc(m.text)}` +
+    m.images.map(f => `<img src="${d.img_base}${encodeURIComponent(f)}?uid=${encodeURIComponent(d.uid)}" data-u="${d.img_base}${encodeURIComponent(f)}?uid=${encodeURIComponent(d.uid)}">`).join('') + '</div>').join('')
+    : `<div class="fb-empty">${esc(t('fbEmpty'))}</div>`;
+  box.querySelectorAll('img').forEach(i => i.onclick = () => open(i.dataset.u));
+  if (atEnd || !FB.shown) box.scrollTop = box.scrollHeight; FB.shown = true;
+}
+fbInit();
