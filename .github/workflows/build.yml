@@ -1,8 +1,16 @@
 name: build
 on:
   push:
-    tags: ["v*"]
+    branches: ["**"]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   # built-in mirror list (secret, not in the repo): "https://a/;https://b/"
@@ -11,7 +19,36 @@ env:
   ELITE_LOG_HOSTS: ${{ secrets.ELITE_LOG_HOSTS }}
 
 jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      number: ${{ steps.version.outputs.number }}
+      tag: ${{ steps.version.outputs.tag }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          version="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)"
+          python3 scripts/release_notes.py check "$version"
+          {
+            echo "number=$version"
+            echo "tag=v$version"
+            case "$version" in *.0) echo "release=true" ;; *) echo "release=false" ;; esac
+          } >> "$GITHUB_OUTPUT"
+          echo "Version **$version**" >> "$GITHUB_STEP_SUMMARY"
+
+  core:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p elite-core -p elite-publish -p elite-cli
+      - run: cargo test -p elite-core -p elite-publish -p elite-cli
+
   launcher:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +65,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
       - name: Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev patchelf
@@ -44,6 +82,7 @@ jobs:
         with:
           name: unsigned-windows
           path: target/release/bundle/nsis/*.exe
+          retention-days: 7
       - name: Sign with SignPath
         if: matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != ''
         uses: signpath/github-action-submit-signing-request@v1
@@ -61,6 +100,7 @@ jobs:
         with:
           name: elite-launcher-windows-signed
           path: signed/*
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: elite-launcher-${{ matrix.os }}
@@ -69,6 +109,7 @@ jobs:
             target/**/release/bundle/deb/*.deb
             target/**/release/bundle/appimage/*.AppImage
             target/**/release/bundle/dmg/*.dmg
+          retention-days: 7
 
   publisher:
     strategy:
@@ -78,6 +119,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo build --release -p elite-publish -p elite-cli
       - uses: actions/upload-artifact@v4
         with:
@@ -85,3 +127,101 @@ jobs:
           path: |
             target/release/elite-publish*
             target/release/elite-cli*
+          retention-days: 7
+
+  # Everything a real upload to the mirrors does, against a temporary store and a one-off key. The upload itself is
+  # skipped until the mirrors and the real signing key are available to CI.
+  publish:
+    needs: [version, core, launcher]
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.number }}
+    steps:
+      - name: Paths
+        run: |
+          {
+            echo "KEYS=$RUNNER_TEMP/keys"
+            echo "DIST=$RUNNER_TEMP/dist"
+            echo "STORE=$RUNNER_TEMP/store"
+          } >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: elite-launcher-*
+          path: ${{ runner.temp }}/dist
+      - name: One-off signing key
+        run: |
+          cargo build -q -p elite-publish
+          ./target/debug/elite-publish keygen "$KEYS"
+          # the public key is compiled in: rebuild so that `verify` checks against the one-off key
+          cp "$KEYS/public.key" keys/public.key
+          cargo build -q -p elite-publish
+      - name: Publish into a temporary store
+        run: |
+          ./target/debug/elite-publish version "$DIST" "$STORE" "launcher-$VERSION" "$KEYS/private.key"
+          url="https://github.com/${{ github.repository }}/releases/tag/v$VERSION"
+          printf '{"schema":1,"launcher_update":{"version":"%s","urls":{"all":"%s"}}}\n' "$VERSION" "$url" > "$STORE/launcher.json"
+          ./target/debug/elite-publish sign "$STORE/launcher.json" "$KEYS/private.key"
+          ./target/debug/elite-publish verify "$STORE"
+      - name: Summary
+        run: |
+          {
+            echo "### Launcher $VERSION: dry-run publish"
+            echo '```'
+            (cd "$DIST" && find . -type f -printf '%s\t%P\n' | awk -F'\t' '{printf "%10.1f MB  %s\n", $1/1e6, $2}')
+            echo '```'
+            echo "Store: $(find "$STORE/blobs" -type f | wc -l) blobs, $(du -sh "$STORE" | cut -f1); signatures OK."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload to the mirrors
+        run: |
+          echo "::notice::Upload to the mirrors skipped: no server access and no real signing key in CI yet"
+          echo "Upload to the mirrors: **skipped** (no server access yet)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean up
+        if: always()
+        run: |
+          rm -rf "$KEYS" "$DIST" "$STORE"
+          git checkout -- keys/public.key
+
+  # After a merge to main: tag vX.Y.Z if it is new; for X.Y.0 also a GitHub Release with the installers.
+  release:
+    needs: [version, publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.number }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag
+        id: tag
+        run: |
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists, nothing to do"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          echo "new=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: steps.tag.outputs.new == 'true' && needs.version.outputs.release == 'true'
+        with:
+          pattern: elite-launcher-*
+          path: dist
+      - name: GitHub Release
+        if: steps.tag.outputs.new == 'true' && needs.version.outputs.release == 'true'
+        run: |
+          # the signed Windows installer replaces the unsigned one when SignPath is set up
+          if [ -d dist/elite-launcher-windows-signed ]; then rm -rf dist/elite-launcher-windows-latest; fi
+          python3 scripts/release_notes.py notes "$VERSION" > release-notes.md
+          find dist -type f \( -name '*.exe' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \) -print0 \
+            | xargs -0 gh release create "$TAG" --title "Elite Launcher $VERSION" --notes-file release-notes.md --verify-tag

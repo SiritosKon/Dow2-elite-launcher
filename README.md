@@ -120,6 +120,24 @@ cross-built on Linux: `cargo tauri build --target x86_64-pc-windows-gnu --bundle
 and `nsis`). macOS needs a Mac or the GitHub workflow. Without code signing Windows SmartScreen shows a
 warning on first start; signing is configured in `app/tauri.conf.json` (`bundle > windows`).
 
+## Versions and releases
+
+The version lives only in `Cargo.toml` (`[workspace.package] version`); Tauri takes it from there. To ship one:
+raise the version, add its entry at the top of [CHANGELOG.md](CHANGELOG.md) and merge to `main`.
+
+`.github/workflows/build.yml` runs on every push and pull request:
+
+| Job | What |
+|---|---|
+| `version` | reads the version, fails when CHANGELOG.md has no entry for it |
+| `core` | builds and tests `elite-core`, `elite-publish`, `elite-cli` |
+| `launcher` | installers for Windows, Linux, macOS (artifacts, kept 7 days) |
+| `publisher` | `elite-publish` and `elite-cli` for each OS |
+| `publish` | dry run: publishes the installers into a temporary store with a one-off key, signs a `launcher.json`, verifies all signatures, then deletes it all; the upload to the mirrors is skipped for now |
+| `release` | only on `main`: tags `vX.Y.Z` if it is new; for `X.Y.0` also a GitHub Release with the installers and the CHANGELOG entries since the previous `X.Y.0` |
+
+Tags are set by CI, not by hand.
+
 ## Formats (stable — changing them needs a new launcher)
 
 - Chunking: gear hash, min/avg/max 4/16/64 KB, see `crates/elite-core/src/cdc.rs`.
