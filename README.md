@@ -123,18 +123,19 @@ warning on first start; signing is configured in `app/tauri.conf.json` (`bundle 
 ## Versions and releases
 
 The version lives only in `Cargo.toml` (`[workspace.package] version`); Tauri takes it from there. To ship one:
-raise the version, add its entry at the top of [CHANGELOG.md](CHANGELOG.md) and merge to `main`.
+raise the version, write its notes to `changelog/<version>/en.md` (a list of changes) and merge to `main`.
+Other languages can sit next to `en.md` later (`ru.md`, …); only `en.md` is required.
 
 `.github/workflows/build.yml` runs on every push and pull request:
 
 | Job | What |
 |---|---|
-| `version` | reads the version, fails when CHANGELOG.md has no entry for it |
+| `version` | reads the version, fails when `changelog/<version>/en.md` is missing |
 | `core` | builds and tests `elite-core`, `elite-publish`, `elite-cli` |
 | `launcher` | installers for Windows, Linux, macOS (artifacts, kept 7 days) |
 | `publisher` | `elite-publish` and `elite-cli` for each OS |
 | `publish` | dry run: publishes the installers into a temporary store with a one-off key, signs a `launcher.json`, verifies all signatures, then deletes it all; the upload to the mirrors is skipped for now |
-| `release` | only on `main`: tags `vX.Y.Z` if it is new; for `X.Y.0` also a GitHub Release with the installers and the CHANGELOG entries since the previous `X.Y.0` |
+| `release` | only on `main`: tags `vX.Y.Z` if it is new; for `X.Y.0` also a GitHub Release with the installers and the notes of every version since the previous `X.Y.0` |
 
 Tags are set by CI, not by hand.
 

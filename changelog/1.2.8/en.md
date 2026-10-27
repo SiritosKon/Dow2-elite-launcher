@@ -1,0 +1,3 @@
+- An Elite install the launcher did not make is recognised and not downloaded again.
+- Progress is shown while big files are checked.
+- Feedback chat with the developers (text and pictures) instead of the news panel.

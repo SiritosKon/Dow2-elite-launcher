@@ -1,0 +1,1 @@
+- Anonymous daily usage count: the hash changes every day, can be turned off in the settings.

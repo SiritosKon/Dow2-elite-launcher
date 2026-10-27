@@ -1,0 +1,2 @@
+- The lobby host filter is gone: no auto-kick settings; old filter rules are cleaned out of `LobbyStats.ini`.
+- Add-ons update on their own when their version changes.

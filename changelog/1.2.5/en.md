@@ -1,0 +1,1 @@
+- Add-ons step aside for a hand-installed `dow2-patches` copy and ask before deleting it.
