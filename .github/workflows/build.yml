@@ -30,6 +30,11 @@ jobs:
       - id: version
         run: |
           version="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)"
+          tauri="$(python3 -c 'import json; print(json.load(open("app/tauri.conf.json"))["version"])')"
+          if [ "$version" != "$tauri" ]; then
+            echo "::error::Cargo.toml has $version, app/tauri.conf.json has $tauri: raise both"
+            exit 1
+          fi
           python3 scripts/release_notes.py check "$version"
           {
             echo "number=$version"

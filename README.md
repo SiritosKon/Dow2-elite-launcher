@@ -122,15 +122,15 @@ warning on first start; signing is configured in `app/tauri.conf.json` (`bundle 
 
 ## Versions and releases
 
-The version lives only in `Cargo.toml` (`[workspace.package] version`); Tauri takes it from there. To ship one:
-raise the version, write its notes to `changelog/<version>/en.md` (a list of changes) and merge to `main`.
+The version lives in `Cargo.toml` (`[workspace.package] version`) and in `app/tauri.conf.json`; CI fails when they differ.
+To ship one: raise the version in both, write its notes to `changelog/<version>/en.md` (a list of changes) and merge to `main`.
 Other languages can sit next to `en.md` later (`ru.md`, …); only `en.md` is required.
 
 `.github/workflows/build.yml` runs on every push and pull request:
 
 | Job | What |
 |---|---|
-| `version` | reads the version, fails when `changelog/<version>/en.md` is missing |
+| `version` | reads the version, fails when `Cargo.toml` and `app/tauri.conf.json` differ or `changelog/<version>/en.md` is missing |
 | `core` | builds and tests `elite-core`, `elite-publish`, `elite-cli` |
 | `launcher` | installers for Windows, Linux, macOS (artifacts, kept 7 days) |
 | `publisher` | `elite-publish` and `elite-cli` for each OS |
